@@ -20,6 +20,11 @@ set(PROJECT_SOURCES
         mainwindow.h
         mainwindow.ui
         renderer.h renderer.cpp
+        dem.vsh
+        dem.fsh
+        helpers.h
+        helpers.cpp
+        digitalelevationmodel.h digitalelevationmodel.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -58,6 +63,12 @@ set_target_properties(DemRenderer PROPERTIES
 install(TARGETS DemRenderer
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+# COPY shaders
+file(COPY dem.vsh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY dem.fsh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# COPY DEM
+file(COPY ./data/dem_data.asc DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(DemRenderer)
