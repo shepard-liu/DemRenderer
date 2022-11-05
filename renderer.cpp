@@ -5,6 +5,7 @@
 #include <limits>
 #include <algorithm>
 #include <QRandomGenerator>
+#include <QApplication>
 
 Renderer::Renderer(QWidget *parent): QOpenGLWidget(parent) {
     QSurfaceFormat format;
@@ -23,11 +24,14 @@ void Renderer::initializeGL() {
     glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
     mProgram = new QOpenGLShaderProgram(this);
 
+    qDebug() << Helpers::applicationDir;
     // 加载着色器
     mProgram->addShaderFromSourceCode(QOpenGLShader::Vertex,
-                                      Helpers::readFile("./dem.vsh"));
+                                      Helpers::readFile(Helpers::applicationDir + "/dem.vsh"));
     mProgram->addShaderFromSourceCode(QOpenGLShader::Fragment,
-                                      Helpers::readFile("./dem.fsh"));
+                                      Helpers::readFile(Helpers::applicationDir + "/dem.fsh"));
+
+
 
     mProgram->link();
 
@@ -44,32 +48,19 @@ void Renderer::initializeGL() {
 }
 
 void Renderer::resizeGL(int w, int h) {
-
+    updateMvpMatrix();
 }
 
 void Renderer::paintGL() {
-    if(muDemCols * muDemRows == 0) return;
+    if(!ready()) return;
 
     glClear(GL_COLOR_BUFFER_BIT);
     glClear(GL_DEPTH_BUFFER_BIT);
 
     mProgram->bind();
 
-    // 计算模型视图变换矩阵
-    QMatrix4x4 matrix;
-
-    float elevSpan = mfMaxElev - mfMinElev;
-
-    // 设定远近裁剪面相对于 DEM xyz 跨度
-    matrix.perspective(60.0f,
-                       width() / float(height()),
-                       elevSpan * 0.001f,
-                       std::max({elevSpan, float(muDemCols), float(muDemRows)}) * 100.0f);
-    // 定位DEM到中心位置
-//    matrix.translate(-muDemCols / 2.0f, -muDemRows / 2.0f, -(mfMaxElev + elevSpan));
-    matrix.translate(mfModelTranslateX, mfModelTranslateY, mfModelTranslateZ);
-
-    mProgram->setUniformValue(mMatrixUnif, matrix);
+    // 传入MVP矩阵
+    mProgram->setUniformValue(mMatrixUnif, mMvpMatrix);
 
     // 绑定缓冲区对象
     glBindBuffer(GL_ARRAY_BUFFER, mVboIds[0]);
@@ -89,7 +80,6 @@ void Renderer::paintGL() {
         glDrawElements(GL_TRIANGLE_STRIP, muDemCols * 2, GL_UNSIGNED_INT,
                        (const void *)(i * muDemCols * 2 * sizeof(GLuint)));
     }
-//    glDrawElements(GL_TRIANGLE_STRIP, muDemCols * 2, GL_UNSIGNED_INT, 0);
 
     glDisableVertexAttribArray(mPositionAttr);
     glDisableVertexAttribArray(mColorAttr);
@@ -100,7 +90,7 @@ void Renderer::paintGL() {
     mProgram->release();
 }
 
-void Renderer::onSetupRenderer(const DigitalElevationModel *pDem) {
+void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandomizedGradient) {
     if(!pDem || pDem->isEmpty()) {
         return;
     }
@@ -126,6 +116,28 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem) {
 
     mfMaxElev = maxElev, mfMinElev = minElev;
 
+    // 计算包围盒最长最短边和斜对角
+    float elevSpan = maxElev - minElev;
+    mfBboxMinEdge = std::min({elevSpan, float(muDemCols), float(muDemRows)});
+    mfBboxMaxEdge = std::max({elevSpan, float(muDemCols), float(muDemRows)});
+    mfBboxDiagonal = sqrt(elevSpan * elevSpan +  float(muDemCols * muDemCols) +  float(
+                              muDemRows * muDemRows));
+
+    // 确定要渲染的渐变
+    std::vector<Helpers::ColorStop> gradient = mDefaultGradient;
+    if(useRandomizedGradient) {
+        gradient = std::vector<Helpers::ColorStop>();
+        int nStops = QRandomGenerator::global()->bounded(2, 6);
+        for(int i = 0; i <= nStops; ++i) {
+            gradient.push_back(Helpers::ColorStop(i / float(nStops),
+                                                  QRandomGenerator::global()->bounded(0, 256),
+                                                  QRandomGenerator::global()->bounded(0, 256),
+                                                  QRandomGenerator::global()->bounded(0, 256),
+                                                  1.0f
+                                                 ));
+        }
+    }
+
     // 生成顶点数据
     for(quint64 y = 0; y < muDemRows; ++y) {
         auto &currentIndexArray = indexArrays[y];
@@ -135,17 +147,12 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem) {
 
             vertexAttribs.push_back(x);
             vertexAttribs.push_back(y);
-            vertexAttribs.push_back(pData[index] * 0.1);
-//            vertexAttribs.push_back(float(QRandomGenerator::global()->generateDouble()) *
-//                                    100);
-//            vertexAttribs.push_back(0.0f);
+            vertexAttribs.push_back(pData[index]);
 
             // 插值出顶点渐变颜色
-            auto vertexColor = Helpers::linearGradient(mGradientAltitude,
+            auto vertexColor = Helpers::linearGradient(gradient,
                                (pData[index] - minElev) / (maxElev - minElev));
 
-//            auto color = float(QRandomGenerator::global()->generateDouble());
-//            auto vertexColor = std::vector<float> {color, color, color, 1.0f };
             for(auto component : vertexColor) {
                 vertexAttribs.push_back(component);
             }
@@ -188,8 +195,33 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    // 设置视点
-    mfModelTranslateZ =  -(maxElev + (maxElev - minElev)) ;
+    onResetCameraControl();
+
+    updateMvpMatrix();
+    update();
+}
+
+void Renderer::onSwitchProjectionType(ProjectionType type) {
+    mCurrentProjType = type;
+    onResetCameraControl();
+    updateMvpMatrix();
+    update();
+}
+
+void Renderer::onResetCameraControl() {
+    if(mCurrentProjType == ProjectionType::Perspective) {
+        mOrbitCameraCtrl.setRadius(sqrt(float(muDemCols * muDemCols + muDemRows * muDemRows)));
+        mOrbitCameraCtrl.setCenter(float(muDemCols) / 2.0f, float(muDemRows) / 2.0f, 0.0f);
+        mOrbitCameraCtrl.setTheta(Helpers::Pi / 3);
+    } else if(mCurrentProjType == ProjectionType::Orthographic) {
+        mOrbitCameraCtrl.setRadius(mfBboxMaxEdge * sqrt(3.0f));
+    }
+}
+
+void Renderer::onSetAutoFitElevation(bool enabled) {
+    mbAutoFitElevation = enabled;
+    updateMvpMatrix();
+    update();
 }
 
 void Renderer::cleanUpBuffers() {
@@ -200,39 +232,122 @@ void Renderer::cleanUpBuffers() {
 
 }
 
-void Renderer::keyPressEvent(QKeyEvent *event) {
-    qDebug() << event->key();
+void Renderer::updateMvpMatrix() {
+    mMvpMatrix = QMatrix4x4{};
 
-    switch (event->key()) {
-    case Qt::Key::Key_W:
-        mfModelTranslateY += 10.0f;
+    if(mCurrentProjType == ProjectionType::Perspective) {
+        // 透视投影矩阵：
+        mMvpMatrix.perspective(60.0f,
+                               width() / float(height()),
+                               mfBboxMinEdge * NEAR_PLANE_SCALE,
+                               mfBboxMaxEdge * FAR_PLANE_SCALE);
+    } else if(mCurrentProjType == ProjectionType::Orthographic) {
+        float desiredBoxHeight = mfBboxMaxEdge * mfOrthoZoom;
+        float aspectRatio = width() / float(height());
+        // 正射投影矩阵：
+        mMvpMatrix.ortho(-desiredBoxHeight * aspectRatio / 2.0f,
+                         desiredBoxHeight * aspectRatio / 2.0f,
+                         -desiredBoxHeight / 2.0f,
+                         desiredBoxHeight / 2.0f,
+                         0.0f,
+                         mfBboxDiagonal * 100.0f);
+    }
+
+    // 右乘视图矩阵
+    mMvpMatrix *= mOrbitCameraCtrl.computeViewMatrix();
+
+    // 右乘模型矩阵
+    if(mbAutoFitElevation) {
+        // 自适应高程将高程缩放至(0~DEM格网平面对角线的一半)
+        float gridPlaneDiagonal = sqrt(float(muDemCols * muDemCols) + float(muDemRows * muDemRows));
+        mMvpMatrix.scale(1.0f, 1.0f, (gridPlaneDiagonal / 2.0f) / (mfMaxElev - mfMinElev));
+    }
+}
+
+bool Renderer::ready() {
+    return muDemCols != 0 && muDemRows != 0;
+}
+
+void Renderer::mousePressEvent(QMouseEvent *event) {
+    QOpenGLWidget::mousePressEvent(event);
+
+    if(!ready()) return;
+
+    switch (event->button()) {
+    case Qt::MouseButton::LeftButton:
+        mbLeftDown = true;
         break;
-    case Qt::Key::Key_S:
-        mfModelTranslateY -= 10.0f;
-        break;
-    case Qt::Key::Key_A:
-        mfModelTranslateX -= 10.0f;
-        break;
-    case Qt::Key::Key_D:
-        mfModelTranslateX += 10.0f;
-        break;
-    case Qt::Key::Key_Q:
-        mfModelTranslateZ -= 10.0f;
-        break;
-    case Qt::Key::Key_E:
-        mfModelTranslateZ += 10.0f;
+    case Qt::MouseButton::RightButton:
+        mbRightDown = true;
         break;
     default:
         break;
     }
 
-    update();
+    mMouseDownPos = event->pos();
 
+    // 记录当前相机参数
+    mCameraPhiOnMouseDown = mOrbitCameraCtrl.phi();
+    mCameraThetaOnMouseDown = mOrbitCameraCtrl.theta();
+    mCameraCenterOnMouseDown = mOrbitCameraCtrl.center();
+    mCameraInvRotationMatrixOnMouseDown = mOrbitCameraCtrl.computeRotationMatrix().transposed();
+}
+
+void Renderer::mouseReleaseEvent(QMouseEvent *event) {
+    QOpenGLWidget::mouseReleaseEvent(event);
+
+    if(!ready()) return;
+
+    mbLeftDown = mbRightDown = false;
+}
+
+void Renderer::mouseMoveEvent(QMouseEvent *event) {
+    QOpenGLWidget::mouseMoveEvent(event);
+
+    if(!ready()) return;
+
+    QPoint currentPos = event->pos();
+
+    float deltaX = currentPos.x() - mMouseDownPos.x(),
+          deltaY = currentPos.y() - mMouseDownPos.y();
+
+    if(mbLeftDown) {
+        mOrbitCameraCtrl.setPhi(mCameraPhiOnMouseDown - deltaX / width() * Helpers::Pi);
+        mOrbitCameraCtrl.setTheta(mCameraThetaOnMouseDown - deltaY / height() * Helpers::Pi);
+    } else if (mbRightDown) {
+        // DEM包围盒最短边
+        QVector4D normalPlaneDeltaVector = QVector4D(
+                                               -deltaX / width() * mfBboxMinEdge,
+                                               deltaY / height() * mfBboxMinEdge,
+                                               0.0f,
+                                               1.0f);
+        QVector4D centerDeltaVector = mCameraInvRotationMatrixOnMouseDown.transposed() *
+                                      normalPlaneDeltaVector;
+
+        mOrbitCameraCtrl.setCenter(mCameraCenterOnMouseDown + centerDeltaVector.toVector3D());
+    }
+
+    updateMvpMatrix();
+    update();
 }
 
 
+void Renderer::wheelEvent(QWheelEvent *event) {
+    if(!ready()) return;
 
+    float positive = event->angleDelta().y() > 0 ? 1.0f : -1.0f;
 
+    if(mCurrentProjType == ProjectionType::Perspective) {
+        mOrbitCameraCtrl.move(0.0f, 0.0f, mfBboxDiagonal * 0.05 * (-positive));
+    } else if(mCurrentProjType == ProjectionType::Orthographic) {
+        mfOrthoZoom += 0.05 * (-positive);
+        if(mfOrthoZoom < 0.1f)mfOrthoZoom = 0.1f;
+        if(mfOrthoZoom > 2.0f)mfOrthoZoom = 2.0f;
+    }
+
+    updateMvpMatrix();
+    update();
+}
 
 
 

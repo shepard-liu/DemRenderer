@@ -1,5 +1,6 @@
 #include <QString>
 #include <QFile>
+#include <QMatrix4x4>
 #include "helpers.h"
 
 QString Helpers::readFile(QString path) {
@@ -55,4 +56,17 @@ std::vector<float> Helpers::linearGradient(const std::vector<ColorStop> &stops,
     }
 
     return color;
+}
+
+QMatrix4x4 Helpers::eulerMatrix(float zR, float yR, float xR) {
+    float cZ = cos(zR), sZ = sin(zR),
+          cY = cos(yR), sY = sin(yR),
+          cX = cos(xR), sX = sin(xR);
+
+    return QMatrix4x4(
+               cY * cZ,     sX * sY * cZ - cX * sZ,     cX * sY * cZ + sX * sZ, 0,
+               cY * sZ,     sX * sY * sZ + cX * cZ,     cX * sY * sZ - sX * cZ, 0,
+               -sY,         sX * cY,                    cX * cY,                0,
+               0,           0,                          0,                      1
+           );
 }

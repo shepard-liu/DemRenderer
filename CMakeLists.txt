@@ -22,8 +22,8 @@ set(PROJECT_SOURCES
         renderer.h renderer.cpp
         dem.vsh
         dem.fsh
-        helpers.h
-        helpers.cpp
+        helpers.h helpers.cpp
+        orbitcontrols.h orbitcontrols.cpp
         digitalelevationmodel.h digitalelevationmodel.cpp
 )
 

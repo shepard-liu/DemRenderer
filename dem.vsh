@@ -1,4 +1,3 @@
-precision mediump float;
 attribute highp vec4 aPosition;
 attribute highp vec4 aColor;
 varying highp vec4 vColor;

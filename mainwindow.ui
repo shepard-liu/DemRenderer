@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>DemRenderer</string>
   </property>
   <property name="toolTip">
    <string/>
@@ -23,7 +23,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>17</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="mMenuFile">
@@ -31,8 +31,33 @@
      <string>文件</string>
     </property>
     <addaction name="mActionOpen"/>
+    <addaction name="separator"/>
+    <addaction name="mActionOpenOrthoImage"/>
+   </widget>
+   <widget class="QMenu" name="mMenuView">
+    <property name="title">
+     <string>视图</string>
+    </property>
+    <addaction name="mActionProjectionType"/>
+    <addaction name="separator"/>
+    <addaction name="mActionOrthographic"/>
+    <addaction name="mActionPerspective"/>
+    <addaction name="mActionBlank1"/>
+    <addaction name="mActionCameraControl"/>
+    <addaction name="separator"/>
+    <addaction name="mActionResetCamera"/>
+   </widget>
+   <widget class="QMenu" name="mMenuDisplay">
+    <property name="title">
+     <string>显示</string>
+    </property>
+    <addaction name="mActionAutoFitElevation"/>
+    <addaction name="mActionRandomizeGradient"/>
+    <addaction name="mActionEnableOrthoImageTexture"/>
    </widget>
    <addaction name="mMenuFile"/>
+   <addaction name="mMenuView"/>
+   <addaction name="mMenuDisplay"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="mActionOpen">
@@ -41,6 +66,120 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="mActionProjectionType">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>投影类型</string>
+   </property>
+   <property name="font">
+    <font>
+     <bold>true</bold>
+    </font>
+   </property>
+  </action>
+  <action name="mActionOrthographic">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>正射投影</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+O</string>
+   </property>
+  </action>
+  <action name="mActionPerspective">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>透视投影</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+P</string>
+   </property>
+  </action>
+  <action name="mActionCameraControl">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>相机控制</string>
+   </property>
+   <property name="font">
+    <font>
+     <bold>true</bold>
+    </font>
+   </property>
+  </action>
+  <action name="mActionBlank1">
+   <property name="text">
+    <string/>
+   </property>
+  </action>
+  <action name="mActionResetCamera">
+   <property name="text">
+    <string>重置相机位置</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+R</string>
+   </property>
+  </action>
+  <action name="mActionAutoFitElevation">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>自适应高程显示</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+A</string>
+   </property>
+  </action>
+  <action name="mActionOpenOrthoImage">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>打开正射影像 ...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+I</string>
+   </property>
+  </action>
+  <action name="mActionRandomizeGradient">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>随机切换高度渐变</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+G</string>
+   </property>
+  </action>
+  <action name="mActionEnableOrthoImageTexture">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>叠加正射影像纹理</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+T</string>
    </property>
   </action>
  </widget>
