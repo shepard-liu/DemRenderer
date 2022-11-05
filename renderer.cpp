@@ -204,18 +204,20 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandom
 void Renderer::onSwitchProjectionType(ProjectionType type) {
     mCurrentProjType = type;
     onResetCameraControl();
-    updateMvpMatrix();
-    update();
 }
 
 void Renderer::onResetCameraControl() {
+    mOrbitCameraCtrl.setCenter(float(muDemCols) / 2.0f, float(muDemRows) / 2.0f, 0.0f);
+    mOrbitCameraCtrl.setTheta(Helpers::Pi / 3);
+    mOrbitCameraCtrl.setPhi(0);
     if(mCurrentProjType == ProjectionType::Perspective) {
         mOrbitCameraCtrl.setRadius(sqrt(float(muDemCols * muDemCols + muDemRows * muDemRows)));
-        mOrbitCameraCtrl.setCenter(float(muDemCols) / 2.0f, float(muDemRows) / 2.0f, 0.0f);
-        mOrbitCameraCtrl.setTheta(Helpers::Pi / 3);
     } else if(mCurrentProjType == ProjectionType::Orthographic) {
         mOrbitCameraCtrl.setRadius(mfBboxMaxEdge * sqrt(3.0f));
+        mfOrthoZoom = 1.0f;
     }
+    updateMvpMatrix();
+    update();
 }
 
 void Renderer::onSetAutoFitElevation(bool enabled) {

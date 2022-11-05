@@ -14,6 +14,8 @@ MainWindow::MainWindow(QWidget *parent)
             &Renderer::onSwitchProjectionType);
     connect(ui->mActionAutoFitElevation, &QAction::triggered, ui->centralwidget,
             &Renderer::onSetAutoFitElevation);
+    connect(ui->mActionResetCamera, &QAction::triggered, ui->centralwidget,
+            &Renderer::onResetCameraControl);
     // UI
     connect(ui->mActionOpen, &QAction::triggered, this, &MainWindow::onActionOpenTriggered);
     connect(ui->mActionOrthographic, &QAction::triggered, this,
