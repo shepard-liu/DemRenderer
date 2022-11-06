@@ -2,22 +2,22 @@
 
 
 quint64 DigitalElevationModel::getRows() const {
-    return nRows;
+    return uRows;
 }
 
-qreal DigitalElevationModel::getLowerLeftX() const {
+float DigitalElevationModel::getLowerLeftX() const {
     return dLowerLeftX;
 }
 
-qreal DigitalElevationModel::getLowerLeftY() const {
+float DigitalElevationModel::getLowerLeftY() const {
     return dLowerLeftY;
 }
 
-qreal DigitalElevationModel::getCellSize() const {
+float DigitalElevationModel::getCellSize() const {
     return dCellSize;
 }
 
-qreal DigitalElevationModel::getNoData() const {
+float DigitalElevationModel::getNoDataValue() const {
     return dNoData;
 }
 
@@ -26,5 +26,5 @@ const std::vector<float>& DigitalElevationModel::getData() const {
 }
 
 quint64 DigitalElevationModel::getCols() const {
-    return nCols;
+    return uCols;
 }

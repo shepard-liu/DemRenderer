@@ -5,6 +5,7 @@
 #include <QKeyEvent>
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
+#include <QOpenGLTexture>
 #include <QOpenGLWidget>
 #include "digitalelevationmodel.h"
 #include "helpers.h"
@@ -19,9 +20,9 @@ public:
         Perspective = 0x2,
     };
 
-    // 和包围盒最长边长度一起用于确定近裁剪面
-    const float NEAR_PLANE_SCALE = 0.001f;
     // 和包围盒最短边长度一起用于确定近裁剪面
+    const float NEAR_PLANE_SCALE = 0.01f;
+    // 和包围盒最长边长度一起用于确定远裁剪面
     const float FAR_PLANE_SCALE = 100.0f;
 
 public:
@@ -34,11 +35,18 @@ protected:
     void resizeGL(int w, int h) override;
     void paintGL() override;
 
+public:
+    void setupRenderer(const DigitalElevationModel* pDem, const QImage* pTexture = nullptr,
+                       bool useRandomizedGradient = false);
+    void switchProjectionType(Renderer::ProjectionType type);
+
+    float elevationScale()const;
+    void setElevationScale(float newScale);
+
 public slots:
-    void onSetupRenderer(const DigitalElevationModel* pDem, bool useRandomizedGradient = false);
-    void onSwitchProjectionType(Renderer::ProjectionType type);
     void onResetCameraControl();
-    void onSetAutoFitElevation(bool enabled);
+    void onSetAutoFitElevation();
+    void onEnableTextureRender(bool enabled);
 
 private:
     void cleanUpBuffers();
@@ -55,14 +63,20 @@ private:
     QMatrix4x4 mMvpMatrix{};
     // 环绕式相机控制器
     OrbitControls mOrbitCameraCtrl{};
-    // 是否自适应高程显示
-    bool mbAutoFitElevation{false};
+    // 高程缩放量
+    float mfElevScale{1.0};
+    // 是否叠加纹理
+    bool mbRenderTexture{false};
 
     // DEM渲染元数据
     quint64 muDemCols{};
     quint64 muDemRows{};
     float mfMinElev{};
     float mfMaxElev{};
+    QVector2D mDemXYCenter{};
+    float mfBboxXSpan{};
+    float mfBboxYSpan{};
+    float mfDemGridDiagonal{};
     float mfBboxMinEdge{};   // DEM包围盒最小边
     float mfBboxMaxEdge{};   // DEM包围盒最大边
     float mfBboxDiagonal{}; // DEM包围盒斜对角线
@@ -73,13 +87,21 @@ private:
     std::vector<GLuint> mVboIds{};
     // EBOs
     std::vector<GLuint> mEboIds{};
+    // 纹理图像
+    QOpenGLTexture* mpTexture{nullptr};
 
     // attribute变量aPosition
     GLint mPositionAttr{-1};
     // attribute变量aColor
     GLint mColorAttr{-1};
+    // attribute变量aTexCoord
+    GLint mTexCoordAttr{-1};
     // uniform变量uMatrix
     GLint mMatrixUnif{-1};
+    // uniform变量uEnableTexture
+    GLint mEnableTexUnif{-1};
+    // uniform变量uSampler
+    GLint mSamplerUnif{-1};
 
     // 线性渐变插值转折点
     const std::vector<Helpers::ColorStop> mDefaultGradient{

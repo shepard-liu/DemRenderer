@@ -21,7 +21,7 @@ Renderer::~Renderer() {
 
 void Renderer::initializeGL() {
     initializeOpenGLFunctions();
-    glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
+    glClearColor(0.52f, 0.807f, 0.922f, 0.0f);
     mProgram = new QOpenGLShaderProgram(this);
 
     qDebug() << Helpers::applicationDir;
@@ -30,20 +30,24 @@ void Renderer::initializeGL() {
                                       Helpers::readFile(Helpers::applicationDir + "/dem.vsh"));
     mProgram->addShaderFromSourceCode(QOpenGLShader::Fragment,
                                       Helpers::readFile(Helpers::applicationDir + "/dem.fsh"));
-
-
-
     mProgram->link();
 
     // 获取着色器变量位置
     mPositionAttr = mProgram->attributeLocation("aPosition");
     mColorAttr =  mProgram->attributeLocation("aColor");
+    mTexCoordAttr = mProgram->attributeLocation("aTexCoord");
     mMatrixUnif = mProgram->uniformLocation("uMatrix");
+    mEnableTexUnif = mProgram->uniformLocation("uEnableTex");
+    mSamplerUnif = mProgram->uniformLocation("uSampler");
 
     Q_ASSERT(mPositionAttr != -1);
     Q_ASSERT(mColorAttr != -1);
+//    Q_ASSERT(mTexCoordAttr != -1);
     Q_ASSERT(mMatrixUnif != -1);
+//    Q_ASSERT(mEnableTexUnif != -1);
+//    Q_ASSERT(mSamplerUnif != -1);
 
+    // 消隐
     glEnable(GL_DEPTH_TEST);
 }
 
@@ -54,28 +58,39 @@ void Renderer::resizeGL(int w, int h) {
 void Renderer::paintGL() {
     if(!ready()) return;
 
-    glClear(GL_COLOR_BUFFER_BIT);
-    glClear(GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     mProgram->bind();
 
     // 传入MVP矩阵
     mProgram->setUniformValue(mMatrixUnif, mMvpMatrix);
+    // 传入是否启用纹理
+    mProgram->setUniformValue(mEnableTexUnif, mbRenderTexture);
 
     // 绑定缓冲区对象
     glBindBuffer(GL_ARRAY_BUFFER, mVboIds[0]);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mEboIds[0]);
 
+    if(mbRenderTexture) {
+        mProgram->setUniformValue(mSamplerUnif, 0);
+    }
+
     // 解释顶点属性
-    glVertexAttribPointer(mPositionAttr, 3, GL_FLOAT,
-                          GL_FALSE, (3 + 4) * sizeof(GLfloat), 0);
-    glVertexAttribPointer(mColorAttr, 4, GL_FLOAT,
-                          GL_FALSE, (3 + 4) * sizeof(GLfloat), (const void *)(3 * sizeof(GLfloat)));
+    GLuint bytesPerVertex = (3 + 4 + 2) * sizeof(GLfloat);
+    glVertexAttribPointer(mPositionAttr,    3, GL_FLOAT, GL_FALSE, bytesPerVertex,
+                          0);
+    glVertexAttribPointer(mColorAttr,       4, GL_FLOAT, GL_FALSE, bytesPerVertex,
+                          (const void *)(3 * sizeof(GLfloat)));
+    glVertexAttribPointer(mTexCoordAttr,    2, GL_FLOAT, GL_FALSE, bytesPerVertex,
+                          (const void *)(7 * sizeof(GLfloat)));
 
     glEnableVertexAttribArray(mPositionAttr);
     glEnableVertexAttribArray(mColorAttr);
-
+    glEnableVertexAttribArray(mTexCoordAttr);
     // 渲染
+    if(mbRenderTexture && mpTexture) {
+        mpTexture->bind(0);
+    }
     for(quint64 i = 0; i < muDemRows - 1; ++i) {
         glDrawElements(GL_TRIANGLE_STRIP, muDemCols * 2, GL_UNSIGNED_INT,
                        (const void *)(i * muDemCols * 2 * sizeof(GLuint)));
@@ -83,6 +98,7 @@ void Renderer::paintGL() {
 
     glDisableVertexAttribArray(mPositionAttr);
     glDisableVertexAttribArray(mColorAttr);
+    glDisableVertexAttribArray(mTexCoordAttr);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -90,21 +106,23 @@ void Renderer::paintGL() {
     mProgram->release();
 }
 
-void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandomizedGradient) {
+void Renderer::setupRenderer(const DigitalElevationModel *pDem, const QImage* pTexture,
+                             bool useRandomizedGradient) {
     if(!pDem || pDem->isEmpty()) {
         return;
     }
+    mbRenderTexture = pTexture != nullptr ? true : false;
 
     muDemCols = pDem->getCols();
     muDemRows = pDem->getRows();
+    mfBboxXSpan = muDemCols * pDem->getCellSize();
+    mfBboxYSpan = muDemRows * pDem->getCellSize();
 
     auto * pData = pDem->getData().data();
 
     std::vector<float> vertexAttribs{};
-    vertexAttribs.reserve(muDemCols * muDemRows * (3 + 4));
+    vertexAttribs.reserve(muDemCols * muDemRows * (3 + 4 + 2));
     std::vector<std::vector<GLuint>> indexArrays(muDemRows - 1);
-
-    // 纹理映射
 
     // 搜索DEM高程跨度
     float maxElev = -std::numeric_limits<float>::max(), minElev = -maxElev;
@@ -116,12 +134,16 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandom
 
     mfMaxElev = maxElev, mfMinElev = minElev;
 
-    // 计算包围盒最长最短边和斜对角
+    // 计算渲染参数
     float elevSpan = maxElev - minElev;
-    mfBboxMinEdge = std::min({elevSpan, float(muDemCols), float(muDemRows)});
-    mfBboxMaxEdge = std::max({elevSpan, float(muDemCols), float(muDemRows)});
-    mfBboxDiagonal = sqrt(elevSpan * elevSpan +  float(muDemCols * muDemCols) +  float(
-                              muDemRows * muDemRows));
+    mfBboxMinEdge = std::min({elevSpan, mfBboxXSpan, mfBboxYSpan});
+    mfBboxMaxEdge = std::max({elevSpan, mfBboxXSpan, mfBboxYSpan});
+    mfBboxDiagonal = sqrt(elevSpan * elevSpan +  mfBboxXSpan * mfBboxXSpan + mfBboxYSpan * mfBboxYSpan);
+    mfDemGridDiagonal = sqrt(mfBboxXSpan * mfBboxXSpan + mfBboxYSpan * mfBboxYSpan);
+
+    // 找到DEM格网中心位置
+    auto geoCenter = pDem->getGeoCoord(muDemRows / 2.0, muDemCols / 2.0).toVector2D();
+    mDemXYCenter = QVector2D(geoCenter.y(), geoCenter.x());
 
     // 确定要渲染的渐变
     std::vector<Helpers::ColorStop> gradient = mDefaultGradient;
@@ -145,23 +167,38 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandom
         for(quint64 x = 0; x < muDemCols; ++x) {
             quint64 index = x + y * muDemCols;
 
-            vertexAttribs.push_back(x);
-            vertexAttribs.push_back(y);
-            vertexAttribs.push_back(pData[index]);
+            QVector3D geoCoord = pDem->getGeoCoord(y, x);
+
+            /**
+             * 交换XY轴输入顶点
+             *
+             * 地理坐标系为北东高坐标（左手系），而OpenGL为右手。
+             * 直接输入会导致XY翻转，DEM平面被沿XY轴角平分线对称。
+             * 交换后输入，世界坐标系的Y轴为DEM地理参考的X轴，世界坐标系的X轴为地理参考的Y轴。
+             */
+            vertexAttribs.insert(vertexAttribs.end(), {
+                geoCoord.y(),
+                geoCoord.x(),
+                pData[index],
+            });
 
             // 插值出顶点渐变颜色
             auto vertexColor = Helpers::linearGradient(gradient,
                                (pData[index] - minElev) / (maxElev - minElev));
+            vertexAttribs.insert(vertexAttribs.end(), vertexColor.begin(), vertexColor.end());
 
-            for(auto component : vertexColor) {
-                vertexAttribs.push_back(component);
-            }
+            // 纹理映射
+            vertexAttribs.insert(vertexAttribs.end(), {
+                mbRenderTexture ? x / float(muDemCols)              : 0,
+                mbRenderTexture ? -(y / float(muDemRows)) + 1.0f    : 0,
+            });
 
-            Q_ASSERT(vertexColor[3] == 1);
             // 生成索引数组
             if(y != muDemRows - 1) { // 若非最后一列
-                currentIndexArray.push_back(index + muDemCols);
-                currentIndexArray.push_back(index);
+                currentIndexArray.insert(currentIndexArray.end(), {
+                    GLuint(index + muDemCols),
+                    GLuint(index)
+                });
             }
         }
     }
@@ -191,6 +228,16 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandom
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                  flatIndexArray.size() * sizeof(GLuint), flatIndexArray.data(), GL_STATIC_DRAW);
 
+    // 载入纹理图像
+    if(mbRenderTexture) {
+        mpTexture = new QOpenGLTexture((*pTexture).mirrored());
+        mpTexture->setMagnificationFilter(QOpenGLTexture::Linear);
+        mpTexture->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
+        mpTexture->setSize(pTexture->width(), pTexture->height());
+        mpTexture->setFormat(QOpenGLTexture::TextureFormat::RGBFormat);
+        mpTexture->allocateStorage(QOpenGLTexture::PixelFormat::RGB, QOpenGLTexture::PixelType::UInt8);
+    }
+
     // 解绑
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -201,17 +248,28 @@ void Renderer::onSetupRenderer(const DigitalElevationModel *pDem, bool useRandom
     update();
 }
 
-void Renderer::onSwitchProjectionType(ProjectionType type) {
+void Renderer::switchProjectionType(ProjectionType type) {
     mCurrentProjType = type;
     onResetCameraControl();
 }
 
+float Renderer::elevationScale() const {
+    return mfElevScale;
+}
+
+void Renderer::setElevationScale(float newScale) {
+    mfElevScale = newScale;
+    if(mfElevScale < 0.05f)mfElevScale = 0.05f;
+    updateMvpMatrix();
+    update();
+}
+
 void Renderer::onResetCameraControl() {
-    mOrbitCameraCtrl.setCenter(float(muDemCols) / 2.0f, float(muDemRows) / 2.0f, 0.0f);
+    mOrbitCameraCtrl.setCenter(QVector3D(mDemXYCenter, 0.0f));
     mOrbitCameraCtrl.setTheta(Helpers::Pi / 3);
     mOrbitCameraCtrl.setPhi(0);
     if(mCurrentProjType == ProjectionType::Perspective) {
-        mOrbitCameraCtrl.setRadius(sqrt(float(muDemCols * muDemCols + muDemRows * muDemRows)));
+        mOrbitCameraCtrl.setRadius(mfDemGridDiagonal);
     } else if(mCurrentProjType == ProjectionType::Orthographic) {
         mOrbitCameraCtrl.setRadius(mfBboxMaxEdge * sqrt(3.0f));
         mfOrthoZoom = 1.0f;
@@ -220,8 +278,15 @@ void Renderer::onResetCameraControl() {
     update();
 }
 
-void Renderer::onSetAutoFitElevation(bool enabled) {
-    mbAutoFitElevation = enabled;
+void Renderer::onSetAutoFitElevation() {
+    // 自适应高程将高程缩放至(0~DEM格网平面对角线的一半)
+    mfElevScale = (mfDemGridDiagonal / 2.0f) / (mfMaxElev - mfMinElev);
+    updateMvpMatrix();
+    update();
+}
+
+void Renderer::onEnableTextureRender(bool enabled) {
+    mbRenderTexture = enabled;
     updateMvpMatrix();
     update();
 }
@@ -231,7 +296,10 @@ void Renderer::cleanUpBuffers() {
         glDeleteBuffers(mVboIds.size(), mVboIds.data());
     if(mEboIds.size())
         glDeleteBuffers(mEboIds.size(), mEboIds.data());
-
+    if(mpTexture) {
+        delete mpTexture;
+        mpTexture = nullptr;
+    }
 }
 
 void Renderer::updateMvpMatrix() {
@@ -259,11 +327,7 @@ void Renderer::updateMvpMatrix() {
     mMvpMatrix *= mOrbitCameraCtrl.computeViewMatrix();
 
     // 右乘模型矩阵
-    if(mbAutoFitElevation) {
-        // 自适应高程将高程缩放至(0~DEM格网平面对角线的一半)
-        float gridPlaneDiagonal = sqrt(float(muDemCols * muDemCols) + float(muDemRows * muDemRows));
-        mMvpMatrix.scale(1.0f, 1.0f, (gridPlaneDiagonal / 2.0f) / (mfMaxElev - mfMinElev));
-    }
+    mMvpMatrix.scale(1.0f, 1.0f, mfElevScale);
 }
 
 bool Renderer::ready() {
@@ -317,10 +381,9 @@ void Renderer::mouseMoveEvent(QMouseEvent *event) {
         mOrbitCameraCtrl.setPhi(mCameraPhiOnMouseDown - deltaX / width() * Helpers::Pi);
         mOrbitCameraCtrl.setTheta(mCameraThetaOnMouseDown - deltaY / height() * Helpers::Pi);
     } else if (mbRightDown) {
-        // DEM包围盒最短边
         QVector4D normalPlaneDeltaVector = QVector4D(
-                                               -deltaX / width() * mfBboxMinEdge,
-                                               deltaY / height() * mfBboxMinEdge,
+                                               -deltaX / width() * mfBboxDiagonal / 2,
+                                               deltaY / height() * mfBboxDiagonal / 2,
                                                0.0f,
                                                1.0f);
         QVector4D centerDeltaVector = mCameraInvRotationMatrixOnMouseDown.transposed() *

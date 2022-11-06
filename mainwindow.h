@@ -2,7 +2,6 @@
 #define MAINWINDOW_H
 
 #include "digitalelevationmodel.h"
-#include "renderer.h"
 #include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
@@ -22,16 +21,17 @@ private slots:
     void onActionOpenTriggered();
     void onActionOrthoProjTriggered(bool checked);
     void onActionPerspProjTriggered(bool checked);
-    void onActionRandomizeGradient();
-
-signals:
-    void setupRenderer(const DigitalElevationModel* pDem, bool useRandomizedGradient = false);
-    void setRendererProjectionType(Renderer::ProjectionType type);
+    void onActionRandomizeGradientTriggered();
+    void onActionOpenOrthoImageTriggered();
+    void onActionIncElevScaleTriggered();
+    void onActionDecElevScaleTriggered();
+    void onActionResetElevScaleTriggered();
 
 private:
     Ui::MainWindow *ui;
 
     DigitalElevationModel mDem{};
+    QImage mTextureImage{};
 
 private:
     // QObject interface

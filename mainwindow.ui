@@ -51,9 +51,12 @@
     <property name="title">
      <string>显示</string>
     </property>
-    <addaction name="mActionAutoFitElevation"/>
     <addaction name="mActionRandomizeGradient"/>
     <addaction name="mActionEnableOrthoImageTexture"/>
+    <addaction name="mActionAutoFitElevation"/>
+    <addaction name="mActionIncElevScale"/>
+    <addaction name="mActionDecElevScale"/>
+    <addaction name="mActionResetElevScale"/>
    </widget>
    <addaction name="mMenuFile"/>
    <addaction name="mMenuView"/>
@@ -134,7 +137,7 @@
   </action>
   <action name="mActionAutoFitElevation">
    <property name="checkable">
-    <bool>true</bool>
+    <bool>false</bool>
    </property>
    <property name="enabled">
     <bool>false</bool>
@@ -162,7 +165,7 @@
     <bool>false</bool>
    </property>
    <property name="text">
-    <string>随机切换高度渐变</string>
+    <string>随机切换高程渐变</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+G</string>
@@ -180,6 +183,33 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+T</string>
+   </property>
+  </action>
+  <action name="mActionIncElevScale">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>增加高程缩放量</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+=</string>
+   </property>
+  </action>
+  <action name="mActionDecElevScale">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>减少高程缩放量</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+-</string>
+   </property>
+  </action>
+  <action name="mActionResetElevScale">
+   <property name="text">
+    <string>重置高程缩放量</string>
    </property>
   </action>
  </widget>
